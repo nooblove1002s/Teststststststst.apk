@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#070b16">
+<title>CGH — Browser Prototype</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070b16;color:#eef4ff}
+#game{position:fixed;inset:0}canvas{display:block;width:100%;height:100%;touch-action:none}
+.panel{position:fixed;z-index:2;background:#0b1324d9;border:1px solid #263a59;border-radius:14px;backdrop-filter:blur(12px);padding:12px}
+#brand{top:12px;left:12px}#brand strong{letter-spacing:.12em;color:#9bdcff}#brand small{display:block;color:#91a3bd;margin-top:3px}
+#controls{top:12px;right:12px;display:flex;gap:8px;align-items:center}
+button,select{font:inherit;color:#eef4ff;background:#15243b;border:1px solid #355274;border-radius:9px;padding:9px 11px}
+button:active{background:#254366}#hint{left:50%;top:14px;transform:translateX(-50%);font-size:12px;color:#b7c9df;white-space:nowrap}
+#joystick{position:fixed;z-index:3;left:22px;bottom:24px;width:126px;height:126px;border-radius:50%;border:1px solid #8ab6d455;background:#13243c88;touch-action:none}
+#stick{position:absolute;width:48px;height:48px;border-radius:50%;left:38px;top:38px;background:#8bd4ffbb;border:1px solid #d2f1ff}
+#looktip{position:fixed;right:22px;bottom:35px;color:#c4d5e8aa;font-size:12px;z-index:2}
+#status{left:12px;bottom:12px;font-size:12px;color:#9fb2cc}
+@media(pointer:fine){#joystick{display:none}#looktip{display:none}#hint{top:auto;bottom:18px}}
+@media(max-width:600px){#controls{top:auto;right:10px;bottom:160px;flex-direction:column;align-items:stretch}#brand{max-width:170px}#hint{top:80px;font-size:11px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="brand" class="panel"><strong>CGH / BROWSER BUILD</strong><small>Prototype 0.1 · Train void foundation</small></div>
+<div id="hint" class="panel">Move: joystick / WASD · Look: drag / mouse</div>
+<div id="controls" class="panel">
+<label for="moveMode" style="font-size:12px;color:#a9bed8">MOVEMENT</label>
+<select id="moveMode" aria-label="Movement mode"><option value="standard">Standard</option><option value="push">Push movement</option></select>
+<button id="reset">Reset position</button>
+</div>
+<div id="joystick" aria-label="Movement joystick"><div id="stick"></div></div>
+<div id="looktip">Drag the screen to look around</div>
+<div id="status" class="panel">Loading 3D scene…</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js';
+
+const host=document.querySelector('#game'),status=document.querySelector('#status');
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x070b16);
+scene.fog=new THREE.FogExp2(0x070b16,0.012);
+const camera=new THREE.PerspectiveCamera(76,innerWidth/innerHeight,.1,1200);
+camera.position.set(0,1.65,0);
+const renderer=new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.setSize(innerWidth,innerHeight);host.appendChild(renderer.domElement);
+const ambient=new THREE.HemisphereLight(0x9bb9dc,0x111827,1.15);scene.add(ambient);
+const light=new THREE.DirectionalLight(0xd6e8ff,.45);light.position.set(3,8,4);scene.add(light);
+// Deliberately empty: the Train map is a huge void. No buildings or scenery are added.
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000),new THREE.MeshBasicMaterial({color:0x080d19}));
+floor.rotation.x=-Math.PI/2;floor.position.y=-.04;scene.add(floor);
+let yaw=0,pitch=0,velocity=new THREE.Vector3(),move={x:0,y:0},keys={},dragging=false,lastX=0,lastY=0;
+let mode='standard',lastTime=performance.now();
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function setLook(dx,dy){yaw-=dx*.003;pitch=clamp(pitch-dy*.003,-1.35,1.35)}
+function updateCamera(){camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch}
+document.querySelector('#moveMode').addEventListener('change',e=>mode=e.target.value);
+document.querySelector('#reset').addEventListener('click',()=>{camera.position.set(0,1.65,0);velocity.set(0,0,0);yaw=0;pitch=0});
+addEventListener('keydown',e=>{keys[e.code]=true;if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault()});
+addEventListener('keyup',e=>keys[e.code]=false);
+renderer.domElement.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'){dragging=true;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId)}});
+renderer.domElement.addEventListener('pointermove',e=>{if(dragging){setLook(e.clientX-lastX,e.clientY-lastY);lastX=e.clientX;lastY=e.clientY}});
+renderer.domElement.addEventListener('pointerup',()=>dragging=false);
+renderer.domElement.addEventListener('touchstart',e=>{if(e.touches.length===1){lastX=e.touches[0].clientX;lastY=e.touches[0].clientY}},{passive:true});
+renderer.domElement.addEventListener('touchmove',e=>{if(e.touches.length===1){const t=e.touches[0];setLook(t.clientX-lastX,t.clientY-lastY);lastX=t.clientX;lastY=t.clientY}},{passive:true});
+const joy=document.querySelector('#joystick'),stick=document.querySelector('#stick');let joyId=null;
+function joyMove(e){const r=joy.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let dx=e.clientX-cx,dy=e.clientY-cy;const len=Math.hypot(dx,dy),max=42;if(len>max){dx=dx/len*max;dy=dy/len*max}move.x=dx/max;move.y=-dy/max;stick.style.transform=`translate(${dx}px,${dy}px)`}
+joy.addEventListener('pointerdown',e=>{joyId=e.pointerId;joy.setPointerCapture(joyId);joyMove(e)});
+joy.addEventListener('pointermove',e=>{if(e.pointerId===joyId)joyMove(e)});
+function joyEnd(){joyId=null;move={x:0,y:0};stick.style.transform='translate(0,0)'}
+joy.addEventListener('pointerup',joyEnd);joy.addEventListener('pointercancel',joyEnd);
+function animate(now){
+ requestAnimationFrame(animate);const dt=Math.min((now-lastTime)/1000,.04);lastTime=now;
+ const forward=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0)+move.y;
+ const side=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0)+move.x;
+ const input=new THREE.Vector3(side,0,forward);if(input.length()>1)input.normalize();
+ const direction=new THREE.Vector3(input.x,0,input.z).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
+ const speed=mode==='push'?5.5:7.5;
+ if(mode==='standard'){velocity.x=direction.x*speed;velocity.z=direction.z*speed}
+ else {velocity.x+=direction.x*speed*dt*2.3;velocity.z+=direction.z*speed*dt*2.3;velocity.multiplyScalar(Math.pow(.12,dt))}
+ camera.position.addScaledVector(velocity,dt);
+ camera.position.y=1.65;updateCamera();renderer.render(scene,camera);
+}
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5))});
+status.textContent='3D scene ready · Empty Train void · No external models loaded';
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
