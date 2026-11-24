@@ -17,6 +17,11 @@
 #monsterList{margin-top:7px;color:#91d9ff;max-height:90px;overflow:auto}
 button,select{font:inherit;color:#eef4ff;background:#15243b;border:1px solid #355274;border-radius:9px;padding:9px 11px}
 button:active{background:#254366}#hint{left:50%;top:14px;transform:translateX(-50%);font-size:12px;color:#b7c9df;white-space:nowrap}
+#compass{position:fixed;z-index:3;top:58px;left:50%;transform:translateX(-50%);padding:7px 13px;border:1px solid #426080;border-radius:20px;background:#071321cc;color:#bce8ff;font-size:12px;letter-spacing:.12em;min-width:118px;text-align:center}
+#crosshair{position:fixed;z-index:2;left:50%;top:50%;width:18px;height:18px;transform:translate(-50%,-50%);pointer-events:none;opacity:.8}
+#crosshair:before,#crosshair:after{content:"";position:absolute;background:#c9eaff;box-shadow:0 0 5px #70caff}
+#crosshair:before{left:8px;top:0;width:2px;height:18px}
+#crosshair:after{left:0;top:8px;width:18px;height:2px}
 #joystick{position:fixed;z-index:5;left:22px;bottom:clamp(170px,25vh,230px);width:126px;height:126px;border-radius:50%;border:1px solid #8ab6d455;background:#13243c88;touch-action:none}
 #stick{position:absolute;width:48px;height:48px;border-radius:50%;left:38px;top:38px;background:#8bd4ffbb;border:1px solid #d2f1ff}
 #looktip{position:fixed;right:22px;bottom:35px;color:#c4d5e8aa;font-size:12px;z-index:2}
@@ -29,6 +34,8 @@ button:active{background:#254366}#hint{left:50%;top:14px;transform:translateX(-5
 <div id="game"></div>
 <div id="brand" class="panel"><strong>CGH / BROWSER BUILD</strong><small>Prototype 0.1 · Train void foundation</small></div>
 <div id="hint" class="panel">Move: joystick / WASD · Look: drag / mouse</div>
+<div id="compass">NORTH · 000°</div>
+<div id="crosshair" aria-hidden="true"></div>
 <div id="controls" class="panel">
 <label for="moveMode" style="font-size:12px;color:#a9bed8">MOVEMENT</label>
 <select id="moveMode" aria-label="Movement mode"><option value="standard">Standard</option><option value="push">Push movement</option></select>
@@ -48,6 +55,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.m
 import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/loaders/GLTFLoader.js';
 
 const host=document.querySelector('#game'),status=document.querySelector('#status');
+const compass=document.querySelector('#compass');
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x070b16);
 scene.fog=new THREE.FogExp2(0x070b16,0.012);
@@ -138,7 +146,11 @@ function animate(now){
   }
  }
  updateCamera();renderer.render(scene,camera);
- if(Math.floor(now/150)!==Math.floor((now-dt*1000)/150)){status.textContent=`Ready · X ${camera.position.x.toFixed(1)} · Z ${camera.position.z.toFixed(1)} · Move ${Math.hypot(velocity.x,velocity.z).toFixed(1)}`;}
+ if(Math.floor(now/120)!==Math.floor((now-dt*1000)/120)){
+  const heading=(((-yaw*180/Math.PI)%360)+360)%360;
+  const dirs=['NORTH','EAST','SOUTH','WEST'];
+  compass.textContent=dirs[Math.round(heading/90)%4]+' · '+String(Math.round(heading)).padStart(3,'0')+'°';
+  status.textContent=`Ready · X ${camera.position.x.toFixed(1)} · Z ${camera.position.z.toFixed(1)} · Move ${Math.hypot(velocity.x,velocity.z).toFixed(1)}`;}
 }
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5))});
 status.textContent='3D scene ready · Load .glb monster models to test their chase AI';
