@@ -12,6 +12,9 @@
 .panel{position:fixed;z-index:2;background:#0b1324d9;border:1px solid #263a59;border-radius:14px;backdrop-filter:blur(12px);padding:12px}
 #brand{top:12px;left:12px}#brand strong{letter-spacing:.12em;color:#9bdcff}#brand small{display:block;color:#91a3bd;margin-top:3px}
 #controls{top:12px;right:12px;display:flex;gap:8px;align-items:center}
+#monsterPanel{top:78px;right:12px;max-width:230px;font-size:12px;color:#b9cce3}
+#monsterPanel input{display:block;width:100%;margin-top:8px;font-size:11px}
+#monsterList{margin-top:7px;color:#91d9ff;max-height:90px;overflow:auto}
 button,select{font:inherit;color:#eef4ff;background:#15243b;border:1px solid #355274;border-radius:9px;padding:9px 11px}
 button:active{background:#254366}#hint{left:50%;top:14px;transform:translateX(-50%);font-size:12px;color:#b7c9df;white-space:nowrap}
 #joystick{position:fixed;z-index:5;left:22px;bottom:24px;width:126px;height:126px;border-radius:50%;border:1px solid #8ab6d455;background:#13243c88;touch-action:none}
@@ -31,11 +34,18 @@ button:active{background:#254366}#hint{left:50%;top:14px;transform:translateX(-5
 <select id="moveMode" aria-label="Movement mode"><option value="standard">Standard</option><option value="push">Push movement</option></select>
 <button id="reset">Reset position</button>
 </div>
+<div id="monsterPanel" class="panel">
+<strong>MONSTER TEST LOADER</strong>
+<div>Load your actual Sketchfab monster models (.glb). Each loaded model will chase you.</div>
+<input id="monsterFiles" type="file" accept=".glb,model/gltf-binary" multiple>
+<div id="monsterList">No monster models loaded.</div>
+</div>
 <div id="joystick" aria-label="Movement joystick"><div id="stick"></div></div>
 <div id="looktip">Drag the screen to look around</div>
 <div id="status" class="panel">Loading 3D scene…</div>
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js';
+import {GLTFLoader} from 'https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/loaders/GLTFLoader.js';
 
 const host=document.querySelector('#game'),status=document.querySelector('#status');
 const scene=new THREE.Scene();
@@ -52,6 +62,33 @@ const floor=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000),new THREE.MeshBasi
 floor.rotation.x=-Math.PI/2;floor.position.y=-.04;scene.add(floor);
 let yaw=0,pitch=0,velocity=new THREE.Vector3(),move={x:0,y:0},keys={},dragging=false,lastX=0,lastY=0;
 let mode='standard',lastTime=performance.now();
+const gltfLoader=new GLTFLoader(),monsters=[];
+const monsterList=document.querySelector('#monsterList');
+document.querySelector('#monsterFiles').addEventListener('change',async e=>{
+ const files=[...e.target.files];
+ if(!files.length)return;
+ monsterList.textContent='Loading monster models…';
+ for(const file of files){
+  if(!file.name.toLowerCase().endsWith('.glb')){monsterList.textContent+='\nSkipped '+file.name+' (use .glb)';continue}
+  const url=URL.createObjectURL(file);
+  try{
+   const gltf=await new Promise((resolve,reject)=>gltfLoader.load(url,resolve,undefined,reject));
+   const model=gltf.scene;
+   const box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3());
+   const height=Math.max(size.y,.01);model.scale.setScalar(2.4/height);
+   const scaledBox=new THREE.Box3().setFromObject(model);
+   model.position.y-=scaledBox.min.y;
+   const forward=new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
+   const spawn=camera.position.clone().addScaledVector(forward,35);
+   model.position.x+=spawn.x;model.position.z+=spawn.z;
+   scene.add(model);
+   monsters.push({name:file.name,model,speed:3.5,detection:80,attackRange:2.2});
+   monsterList.textContent=monsters.map(m=>'• '+m.name+' — active').join('\n');
+  }catch(err){monsterList.textContent='Could not load '+file.name+'. Try exporting it as a GLB.';console.error(err)}
+  URL.revokeObjectURL(url);
+ }
+ e.target.value='';
+});
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 function setLook(dx,dy){yaw-=dx*.003;pitch=clamp(pitch-dy*.003,-1.35,1.35)}
 function updateCamera(){camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch}
@@ -89,11 +126,22 @@ function animate(now){
  const horizontalSpeed=Math.hypot(velocity.x,velocity.z);
  if(horizontalSpeed>maxSpeed){velocity.x=velocity.x/horizontalSpeed*maxSpeed;velocity.z=velocity.z/horizontalSpeed*maxSpeed}
  camera.position.addScaledVector(velocity,dt);
- camera.position.y=1.65;updateCamera();renderer.render(scene,camera);
+ camera.position.y=1.65;
+ for(const monster of monsters){
+  const dx=camera.position.x-monster.model.position.x,dz=camera.position.z-monster.model.position.z;
+  const distance=Math.hypot(dx,dz);
+  if(distance<monster.detection&&distance>monster.attackRange){
+   const step=Math.min(monster.speed*dt,distance-monster.attackRange);
+   monster.model.position.x+=(dx/distance)*step;
+   monster.model.position.z+=(dz/distance)*step;
+   monster.model.rotation.y=Math.atan2(dx,dz);
+  }
+ }
+ updateCamera();renderer.render(scene,camera);
  if(Math.floor(now/150)!==Math.floor((now-dt*1000)/150)){status.textContent=`Ready · X ${camera.position.x.toFixed(1)} · Z ${camera.position.z.toFixed(1)} · Move ${Math.hypot(velocity.x,velocity.z).toFixed(1)}`;}
 }
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5))});
-status.textContent='3D scene ready · Empty Train void · No external models loaded';
+status.textContent='3D scene ready · Load .glb monster models to test their chase AI';
 requestAnimationFrame(animate);
 </script>
 </body>
