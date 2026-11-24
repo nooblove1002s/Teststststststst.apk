@@ -76,9 +76,18 @@ function animate(now){
  const side=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0)+move.x;
  const input=new THREE.Vector3(side,0,forward);if(input.length()>1)input.normalize();
  const direction=new THREE.Vector3(input.x,0,input.z).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
- const speed=mode==='push'?5.5:7.5;
- if(mode==='standard'){velocity.x=direction.x*speed;velocity.z=direction.z*speed}
- else {velocity.x+=direction.x*speed*dt*2.3;velocity.z+=direction.z*speed*dt*2.3;velocity.multiplyScalar(Math.pow(.12,dt))}
+ const maxSpeed=mode==='push'?7.5:7.5;
+ const acceleration=mode==='push'?13:18;
+ const friction=mode==='push'?2.8:8;
+ if(input.lengthSq()>0){
+   velocity.x+=direction.x*acceleration*dt;
+   velocity.z+=direction.z*acceleration*dt;
+ }else{
+   const damping=Math.exp(-friction*dt);
+   velocity.x*=damping;velocity.z*=damping;
+ }
+ const horizontalSpeed=Math.hypot(velocity.x,velocity.z);
+ if(horizontalSpeed>maxSpeed){velocity.x=velocity.x/horizontalSpeed*maxSpeed;velocity.z=velocity.z/horizontalSpeed*maxSpeed}
  camera.position.addScaledVector(velocity,dt);
  camera.position.y=1.65;updateCamera();renderer.render(scene,camera);
  if(Math.floor(now/150)!==Math.floor((now-dt*1000)/150)){status.textContent=`Ready · X ${camera.position.x.toFixed(1)} · Z ${camera.position.z.toFixed(1)} · Move ${Math.hypot(velocity.x,velocity.z).toFixed(1)}`;}
